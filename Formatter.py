@@ -27,21 +27,20 @@ def process_trend_report():
     num_cols = df_raw.shape[1]
     processed_blocks = []
     month_name = "Processed" 
-    file_prefix = "" # Tracks whether the file is CP or BP for naming
+    file_prefix = "" 
     
     # Process in groups of 4 columns
     for start_col in range(0, num_cols, 4):
         if start_col >= num_cols or pd.isna(df_raw.iloc[7, start_col]) or 'timestamp' not in str(df_raw.iloc[7, start_col]).lower():
             continue
             
-        # Identify if this block is CP or BP based on row 0 (Point Name)
         point_name_text = str(df_raw.iloc[0, start_col]).upper()
         if "CP-" in point_name_text or "COOLER" in point_name_text:
             plant_type = "CP"
             if not file_prefix:
                 file_prefix = "CP_"
         else:
-            plant_type = "BP" # Default fallback safely assumes BP if not explicit CP
+            plant_type = "BP"
             if not file_prefix:
                 file_prefix = "BP_"
 
@@ -98,22 +97,25 @@ def process_trend_report():
         final_block['TimeStampStr'] = final_block['RoundedTime'].dt.strftime('%#m/%#d/%Y %H:00')
         out_data = final_block[['TimeStampStr', 'Value', 'Reliability']].copy()
         
-        # Calculate sum raw math numbers
+        # Calculate sum
         numeric_values = pd.to_numeric(out_data['Value'].str.replace(',', ''), errors='coerce').fillna(0)
         total_sum_num = numeric_values.sum()
         total_sum_str = f"{int(total_sum_num):,}"
         sum_row = pd.DataFrame([['Total Sum', total_sum_str, '']], columns=out_data.columns)
         
-        # Calculate plant conditional MMBtuh math row
+        # Swapped formulas and built formula output equation strings
         if plant_type == "CP":
             mmbtuh_label = "CP MMBtuh"
-            mmbtuh_calc = total_sum_num / 1000
+            mmbtuh_calc = total_sum_num * 0.012
+            calc_val_str = f"{mmbtuh_calc:,.3f}"
+            equation_str = f"sum * 0.012 = {calc_val_str}"
         else:
             mmbtuh_label = "BP MMBtuh"
-            mmbtuh_calc = total_sum_num * 0.012
+            mmbtuh_calc = total_sum_num / 1000
+            calc_val_str = f"{mmbtuh_calc:,.3f}"
+            equation_str = f"sum / 1000 = {calc_val_str}"
             
-        mmbtuh_str = f"{mmbtuh_calc:,.3f}" # Formats cleanly with commas and 3 decimal places
-        mmbtuh_row = pd.DataFrame([[mmbtuh_label, mmbtuh_str, '']], columns=out_data.columns)
+        mmbtuh_row = pd.DataFrame([[mmbtuh_label, equation_str, '']], columns=out_data.columns)
         
         # Rebuild block with metadata, sum row, and MMBtuh row
         meta_df = pd.DataFrame(metadata.values, columns=out_data.columns)
@@ -132,7 +134,6 @@ def process_trend_report():
     
     current_time = time.strftime("%Y%m%d_%H%M")
     
-    # Prepend CP_ or BP_ to the beginning of the file name string securely
     if not file_prefix:
         file_prefix = "Processed_"
     base_filename = f"{file_prefix}{month_name}_Report_{current_time}"
